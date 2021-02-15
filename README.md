@@ -42,7 +42,8 @@ Brubeck has the following dependencies:
 
 Build brubeck by typing:
 
-    ./script/bootstrap
+    make
+    make test
 
 Other operating systems or kernels can probably build Brubeck too. More specifically,
 Brubeck has been seen to work under FreeBSD and OpenBSD, but this is not supported.
