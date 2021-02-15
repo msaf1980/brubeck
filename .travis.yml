@@ -11,4 +11,5 @@ addons:
     - libmicrohttpd-dev
     - librdkafka-dev
 script:
-  - make test
+    - script/bootstrap
+    - make test
