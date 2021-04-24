@@ -1,0 +1,34 @@
+{
+  "sharding" : false,
+  "server_name" : "brubeck_debug",
+  "dumpfile" : "./brubeck.dump",
+  "capacity" : 15,
+  "http" : ":8080",
+  "percentiles": [75, 95, 98, 99],
+  "metric_names": {
+    "p75": ".p75",
+    "p95": ".p95",
+    "p98": ".p98",
+    "p99": ".p99",
+    "rate": ".rate"
+  },
+  "backends" : [
+    {
+      "type" : "carbon",
+      "address" : "localhost",
+      "port" : 2003,
+      "frequency" : 10
+    }
+  ],
+
+  "samplers" : [
+    {
+      "type" : "statsd",
+      "address" : "0.0.0.0",
+      "port" : 8126,
+      "workers" : 4,
+      "multisock" : true,
+      "multimsg" : 8
+    }
+  ]
+}

@@ -1,5 +1,173 @@
 #include "brubeck.h"
 
+/* enum metric_id_t  { PC_75, PC_95, PC_98, PC_99, PC_999, PC_50, MIN, MAX, SUM, MEAN, MEDIAN, COUNT, COUNT_PS, RATE }; */
+static char *metric_names_t[] = {
+  ".percentile.75", ".percentile.95", ".percentile.98", ".percentile.99", ".percentile.999", ".percentile.50", 
+  ".min", ".max", ".sum", ".mean", ".median", ".count", ".count_ps"
+};
+
+
+static struct metric_options_t metric_options;
+
+
+struct metric_names_s {
+  char *p75;
+  char *p95;
+  char *p98;
+  char *p99;
+  char *p999;
+  char *p50;
+
+  char *min;
+  char *max;
+  char *sum;
+  char *mean;
+  char *median;
+  char *count;
+  char *rate;
+};
+
+int metric_name_change(const char *descr, enum metric_id_t  t, char *new_name, char *metric_names[]) {
+  if (new_name == NULL) {
+    return 0;
+  }
+  if (strlen(new_name) <= 1) {
+    log_splunk("metric_name[%s]=invalid_string", descr);
+    return -1;
+  }
+  if (new_name[0] != '.') {
+   log_splunk("metric_name='%s' metric_names[%s]=name_without_dot", new_name, descr);
+    return -1;
+  }
+  if (strcmp(new_name, metric_names[t]) != 0) {
+    metric_names[t] = new_name;
+  }
+  return 0;
+}
+
+int load_metric_options(json_t *percentiles, json_t *metric_names) {
+  size_t idx;
+  json_t *s;
+  int i;
+
+  if (json_array_size(percentiles) == 0)  {
+    metric_options_default(&metric_options);
+  } else {
+    for (i = 0; i < METRIC_TYPES_PCNT; i++) {
+      metric_options.send[i] = 0;
+    }
+    i = 0;
+    json_array_foreach(percentiles, idx, s) {
+      if (s && json_typeof(s) == JSON_INTEGER) {
+        int pcnt = json_integer_value(s);
+        switch (pcnt) {
+          case 50:
+            metric_options.send[PC_50] = 1;
+            break;
+          case 75:
+            metric_options.send[PC_75] = 1;
+            break;
+          case 95:
+            metric_options.send[PC_95] = 1;
+            break;
+          case 98:
+            metric_options.send[PC_98] = 1;
+            break;
+          case 99:
+            metric_options.send[PC_99] = 1;
+            break;
+          case 999:
+            metric_options.send[PC_999] = 1;
+            break;
+          default:
+            log_splunk("percentile=%d percentiles[%d]=invalid_percentile", pcnt, i);
+            return -1;
+        }
+      } else {
+        log_splunk("percentile=error percentiles[%d]=invalid_int", i);
+        return -1;
+      }
+      i++;
+    }
+  }
+
+  if (metric_names && json_typeof(metric_names) == JSON_OBJECT) {
+    struct metric_names_s m;
+    m.p75 = NULL;
+    m.p95 = NULL;
+    m.p98 = NULL;
+    m.p99 = NULL;
+    m.p999 = NULL;
+    m.p50 = NULL;
+    m.min = NULL;
+    m.max = NULL;
+    m.sum = NULL;
+    m.mean = NULL;
+    m.median = NULL;
+    m.count = NULL;
+    m.rate = NULL;
+
+    json_unpack_or_die(metric_names, "{s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s, s?:s}",
+                  "p75", &m.p75,
+                  "p95", &m.p95,
+                  "p98", &m.p98,
+                  "p99", &m.p99,
+                  "p999", &m.p999,
+                  "p50", &m.p50,
+                  "min", &m.min,
+                  "max", &m.max,
+                  "sum", &m.sum,
+                  "mean", &m.mean,
+                  "median", &m.median,
+                  "count", &m.count,
+                  "rate", &m.rate
+    );
+    if (metric_name_change("p75", PC_75, m.p75, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("p95", PC_95, m.p95, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("p98", PC_98, m.p98, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("p99", PC_99, m.p99, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("p999", PC_999, m.p999, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("min", MIN, m.min, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("max", MAX, m.max, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("sum", SUM, m.sum, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("count", COUNT, m.count, metric_names_t)) {
+      return -1;
+    }
+    if (metric_name_change("rate", RATE, m.rate, metric_names_t)) {
+      return -1;
+    }
+  } else {
+    log_splunk("metric_names=error metric_names=invalid_obect");
+    return -1;
+  }
+
+  metric_options.max_length = 0;
+  for (i = 0; i < METRIC_TYPES; i++) {
+    size_t len = strlen(metric_names_t[i]);
+    if (metric_options.max_length < len) {
+      metric_options.max_length = len;
+    }
+  }
+
+  return 0;
+}
+
 static inline struct brubeck_metric *new_metric(struct brubeck_server *server,
                                                 const char *key, size_t key_len,
                                                 uint8_t type) {
@@ -155,18 +323,18 @@ static void histogram__sample(struct brubeck_metric *metric,
   char *key;
 
   pthread_spin_lock(&metric->lock);
-  { brubeck_histo_sample(&hsample, &metric->as.histogram); }
+  { brubeck_histo_sample(&hsample, &metric->as.histogram, &metric_options); }
   pthread_spin_unlock(&metric->lock);
 
   /* alloc space for this on the stack. we need enough for:
    * key_length + longest_suffix + null terminator
    */
-  key = alloca(metric->key_len + strlen(".percentile.999") + 1);
+  key = alloca(metric->key_len + metric_options.max_length + 1);
   memcpy(key, metric->key, metric->key_len);
 
-  WITH_SUFFIX(".count") { sample(metric, key, hsample.count, opaque); }
+  WITH_SUFFIX(metric_names_t[COUNT]) { sample(metric, key, hsample.count, opaque); }
 
-  WITH_SUFFIX(".count_ps") {
+  WITH_SUFFIX(metric_names_t[RATE]) {
     struct brubeck_backend *backend = opaque;
     sample(metric, key, hsample.count / (double)backend->sample_freq, opaque);
   }
@@ -176,34 +344,38 @@ static void histogram__sample(struct brubeck_metric *metric,
   if (hsample.count == 0.0)
     return;
 
-  WITH_SUFFIX(".min") { sample(metric, key, hsample.min, opaque); }
+  WITH_SUFFIX(metric_names_t[MIN]) { sample(metric, key, hsample.min, opaque); }
 
-  WITH_SUFFIX(".max") { sample(metric, key, hsample.max, opaque); }
+  WITH_SUFFIX(metric_names_t[MAX]) { sample(metric, key, hsample.max, opaque); }
 
-  WITH_SUFFIX(".sum") { sample(metric, key, hsample.sum, opaque); }
+  WITH_SUFFIX(metric_names_t[SUM]) { sample(metric, key, hsample.sum, opaque); }
 
-  WITH_SUFFIX(".mean") { sample(metric, key, hsample.mean, opaque); }
+  WITH_SUFFIX(metric_names_t[MEAN]) { sample(metric, key, hsample.mean, opaque); }
 
-  WITH_SUFFIX(".median") { sample(metric, key, hsample.median, opaque); }
+  WITH_SUFFIX(metric_names_t[MEDIAN]) { sample(metric, key, hsample.median, opaque); }
 
-  WITH_SUFFIX(".percentile.75") {
-    sample(metric, key, hsample.percentile[PC_75], opaque);
+  if (metric_options.send[PC_50]) {
+    WITH_SUFFIX(metric_names_t[PC_50]) { sample(metric, key, hsample.percentile[PC_50], opaque); }
   }
 
-  WITH_SUFFIX(".percentile.95") {
-    sample(metric, key, hsample.percentile[PC_95], opaque);
+  if (metric_options.send[PC_75]) {
+    WITH_SUFFIX(metric_names_t[PC_75]) { sample(metric, key, hsample.percentile[PC_75], opaque); }
   }
 
-  WITH_SUFFIX(".percentile.98") {
-    sample(metric, key, hsample.percentile[PC_98], opaque);
+  if (metric_options.send[PC_95]) {
+    WITH_SUFFIX(metric_names_t[PC_95]) { sample(metric, key, hsample.percentile[PC_95], opaque); }
   }
 
-  WITH_SUFFIX(".percentile.99") {
-    sample(metric, key, hsample.percentile[PC_99], opaque);
+  if (metric_options.send[PC_98]) {
+    WITH_SUFFIX(metric_names_t[PC_98]) { sample(metric, key, hsample.percentile[PC_98], opaque); }
   }
 
-  WITH_SUFFIX(".percentile.999") {
-    sample(metric, key, hsample.percentile[PC_999], opaque);
+if (metric_options.send[PC_99]) {
+    WITH_SUFFIX(metric_names_t[PC_99]) { sample(metric, key, hsample.percentile[PC_99], opaque); }
+  }
+
+  if (metric_options.send[PC_999]) {
+    WITH_SUFFIX(metric_names_t[PC_999]) { sample(metric, key, hsample.percentile[PC_999], opaque); }
   }
 }
 

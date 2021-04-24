@@ -53,6 +53,8 @@ struct brubeck_metric {
   char key[];
 };
 
+int load_metric_options(json_t *percentiles, json_t *metric_names);
+
 typedef void (*brubeck_sample_cb)(const struct brubeck_metric *metric,
                                   const char *key, value_t value,
                                   void *backend);

@@ -3,6 +3,15 @@
 
 #define HISTO_INIT_SIZE 16
 
+void metric_options_default(struct metric_options_t *metric_options) {
+  metric_options->send[PC_75] = 1;
+  metric_options->send[PC_95] = 1;
+  metric_options->send[PC_98] = 1;
+  metric_options->send[PC_99] = 1;
+  metric_options->send[PC_999] = 0;
+  metric_options->send[PC_50] = 0;
+}
+
 void brubeck_histo_push(struct brubeck_histo *histo, value_t value,
                         value_t sample_freq) {
   histo->count += sample_freq;
@@ -58,7 +67,8 @@ static inline void histo_sort(struct brubeck_histo *histo) {
 }
 
 void brubeck_histo_sample(struct brubeck_histo_sample *sample,
-                          struct brubeck_histo *histo) {
+                          struct brubeck_histo *histo,
+                          struct metric_options_t *metric_options) {
   if (histo->size == 0) {
     memset(sample, 0x0, sizeof(struct brubeck_histo_sample));
     return;
@@ -73,11 +83,24 @@ void brubeck_histo_sample(struct brubeck_histo_sample *sample,
   sample->median = histo_percentile(histo, 0.5f);
   sample->count = histo->count;
 
-  sample->percentile[PC_75] = histo_percentile(histo, 0.75f);
-  sample->percentile[PC_95] = histo_percentile(histo, 0.95f);
-  sample->percentile[PC_98] = histo_percentile(histo, 0.98f);
-  sample->percentile[PC_99] = histo_percentile(histo, 0.99f);
-  sample->percentile[PC_999] = histo_percentile(histo, 0.999f);
+  if (metric_options->send[PC_75]) {
+    sample->percentile[PC_75] = histo_percentile(histo, 0.75f);
+  }
+  if (metric_options->send[PC_95]) {
+    sample->percentile[PC_95] = histo_percentile(histo, 0.95f);
+  }
+  if (metric_options->send[PC_98]) {
+    sample->percentile[PC_98] = histo_percentile(histo, 0.98f);
+  }
+  if (metric_options->send[PC_99]) {
+    sample->percentile[PC_99] = histo_percentile(histo, 0.99f);
+  }
+  if (metric_options->send[PC_999]) {
+    sample->percentile[PC_999] = histo_percentile(histo, 0.999f);
+  }
+  if (metric_options->send[PC_50]) {
+    sample->percentile[PC_50] = histo_percentile(histo, 0.5f);
+  }
 
   /* empty the histogram */
   histo->size = 0;

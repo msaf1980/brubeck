@@ -183,7 +183,7 @@ static void load_config(struct brubeck_server *server, const char *path) {
 
   /* required */
   int capacity;
-  json_t *backends, *samplers;
+  json_t *backends, *samplers, *percentiles = NULL, *metric_names = NULL;
 
   /* optional */
   char *http = NULL;
@@ -198,11 +198,17 @@ static void load_config(struct brubeck_server *server, const char *path) {
         error.line, error.column);
   }
 
-  json_unpack_or_die(server->config, "{s?:s, s:s, s:i, s?:i, s:o, s:o, s?:s}",
-                     "server_name", &server->name, "dumpfile",
-                     &server->dump_path, "capacity", &capacity, "tag_capacity",
-                     &tag_capacity, "backends", &backends, "samplers",
-                     &samplers, "http", &http);
+  json_unpack_or_die(server->config, "{s?:s, s:s, s:i, s?:i, s:o, s:o, s?:s, s?:o, s?:o}",
+                     "server_name", &server->name,
+                     "dumpfile", &server->dump_path,
+                     "capacity", &capacity,
+                     "tag_capacity", &tag_capacity,
+                     "backends", &backends,
+                     "samplers", &samplers,
+                     "http", &http,
+                     "percentiles", &percentiles,
+                     "metric_names", &metric_names
+  );
 
   gh_log_set_instance(server->name);
 
@@ -218,6 +224,9 @@ static void load_config(struct brubeck_server *server, const char *path) {
   }
   load_backends(server, backends);
   load_samplers(server, samplers);
+  if (load_metric_options(percentiles, metric_names) == -1) {
+    die("failed to initialize metric options");
+  }
 
   if (http)
     brubeck_http_endpoint_init(server, http);
